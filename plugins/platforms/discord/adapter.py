@@ -982,6 +982,29 @@ def _read_dm_role_auth_guild() -> Optional[int]:
     return guild_id if guild_id > 0 else None
 
 
+def _read_gateway_intents_value() -> Optional[int]:
+    """Return an explicitly configured Discord Gateway Intents bitfield.
+
+    ``discord.gateway_intents`` is behavioral configuration, so it belongs in
+    config.yaml rather than the secret-bearing .env file. Missing, empty, or
+    malformed values preserve the adapter's existing flag-by-flag defaults.
+    """
+    try:
+        from hermes_cli.config import read_raw_config
+        cfg = read_raw_config() or {}
+        discord_cfg = cfg.get("discord", {}) or {}
+        raw = discord_cfg.get("gateway_intents")
+    except Exception:
+        return None
+    if raw is None or raw == "":
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
 # Default timeout for Discord interactive button views (exec approval, slash
 # confirm, update prompt, clarify choice). Used when the user has not set
 # ``approvals.discord_prompt_timeout`` in config.yaml. 300s (5 min) matches
@@ -1339,18 +1362,21 @@ class DiscordAdapter(BasePlatformAdapter):
             # that aren't enabled in the Discord Developer Portal can prevent the
             # bot from coming online at all, so avoid requesting members intent
             # unless it is actually necessary.
-            # ``"*"`` is the open-mode wildcard (honored in _is_allowed_user), not
-            # a username to resolve — requesting Members for it would silently
-            # fail bots that never enabled Members Intent in the Developer Portal.
-            intents = Intents.default()
-            intents.message_content = True
-            intents.dm_messages = True
-            intents.guild_messages = True
-            intents.members = _needs_server_members_intent(
-                self._allowed_user_ids,
-                self._allowed_role_ids,
-            )
-            intents.voice_states = True
+            configured_intents = _read_gateway_intents_value()
+            if configured_intents is not None:
+                # An explicit bitfield is authoritative, allowing operators to
+                # request exactly the gateway events approved for the bot.
+                intents = Intents(value=configured_intents)
+            else:
+                intents = Intents.default()
+                intents.message_content = True
+                intents.dm_messages = True
+                intents.guild_messages = True
+                intents.members = _needs_server_members_intent(
+                    self._allowed_user_ids,
+                    self._allowed_role_ids,
+                )
+                intents.voice_states = True
 
             # Resolve proxy (DISCORD_PROXY > generic env vars > macOS system proxy)
             from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_bot

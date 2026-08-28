@@ -142,6 +142,84 @@ class SlowSyncBot(FakeBot):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("allowed_users", "expected_members_intent"),
+    [
+        ("769524422783664158", False),
+        ("abhey-gupta", True),
+        ("769524422783664158,abhey-gupta", True),
+        # ``"*"`` is the open-mode wildcard, not a username to resolve, so it
+        # must not pull in the privileged Server Members intent. Requesting
+        # that intent without it being enabled in the Discord Developer Portal
+        # can prevent the bot from coming online at all — and that is exactly
+        # the migration-from-OpenClaw path the wildcard fix targets (#22334).
+        ("*", False),
+        ("769524422783664158,*", False),
+    ],
+)
+async def test_connect_only_requests_members_intent_when_needed(monkeypatch, allowed_users, expected_members_intent):
+    adapter = DiscordAdapter(PlatformConfig(enabled=True, token="test-token"))
+
+    monkeypatch.setenv("DISCORD_ALLOWED_USERS", allowed_users)
+    monkeypatch.setattr("gateway.status.acquire_scoped_lock", lambda scope, identity, metadata=None: (True, None))
+    monkeypatch.setattr("gateway.status.release_scoped_lock", lambda scope, identity: None)
+
+    intents = SimpleNamespace(message_content=False, dm_messages=False, guild_messages=False, members=False, voice_states=False)
+    monkeypatch.setattr(discord_platform.Intents, "default", lambda: intents)
+
+    created = {}
+
+    def fake_bot_factory(*, command_prefix, intents, proxy=None, allowed_mentions=None, **_):
+        created["bot"] = FakeBot(intents=intents, allowed_mentions=allowed_mentions)
+        return created["bot"]
+
+    monkeypatch.setattr(discord_platform.commands, "Bot", fake_bot_factory)
+    monkeypatch.setattr(adapter, "_resolve_allowed_usernames", AsyncMock())
+
+    ok = await adapter.connect()
+
+    assert ok is True
+    assert created["bot"].intents.members is expected_members_intent
+    # Safe-default AllowedMentions must be applied on every connect so the
+    # bot cannot @everyone from LLM output.  Granular overrides live in the
+    # dedicated test_discord_allowed_mentions.py module.
+    am = created["bot"].allowed_mentions
+    assert am is not None, "connect() must pass an AllowedMentions to commands.Bot"
+    assert am.everyone is False
+    assert am.roles is False
+
+    await adapter.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_connect_uses_explicit_gateway_intents_bitfield(monkeypatch):
+    adapter = DiscordAdapter(PlatformConfig(enabled=True, token="test-token"))
+
+    monkeypatch.setattr("gateway.status.acquire_scoped_lock", lambda scope, identity, metadata=None: (True, None))
+    monkeypatch.setattr("gateway.status.release_scoped_lock", lambda scope, identity: None)
+    monkeypatch.setattr(discord_platform, "_read_gateway_intents_value", lambda: 12345)
+    monkeypatch.setattr(adapter, "_resolve_allowed_usernames", AsyncMock())
+
+    explicit_intents = SimpleNamespace(value=12345)
+    intents_factory = MagicMock(return_value=explicit_intents)
+    monkeypatch.setattr(discord_platform, "Intents", intents_factory)
+
+    created = {}
+
+    def fake_bot_factory(*, command_prefix, intents, proxy=None, allowed_mentions=None, **_):
+        created["bot"] = FakeBot(intents=intents, allowed_mentions=allowed_mentions)
+        return created["bot"]
+
+    monkeypatch.setattr(discord_platform.commands, "Bot", fake_bot_factory)
+
+    assert await adapter.connect() is True
+    intents_factory.assert_called_once_with(value=12345)
+    assert created["bot"].intents is explicit_intents
+
+    await adapter.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "initial_allowed",
     [
         {"*"},
@@ -706,4 +784,3 @@ class TestPrivilegedIntentsRequiredFatal:
         assert "Message Content Intent" in (adapter.fatal_error_message or "")
         assert "discord.com/developers/applications" in (adapter.fatal_error_message or "")
         assert adapter._bot_task is None
-
