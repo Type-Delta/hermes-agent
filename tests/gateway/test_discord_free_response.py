@@ -127,8 +127,11 @@ def adapter(monkeypatch):
     return adapter
 
 
-def make_message(*, channel, content: str, mentions=None, msg_type=None):
-    author = SimpleNamespace(id=42, display_name="Jezza", name="Jezza")
+def make_message(
+    *, channel, content: str, mentions=None, msg_type=None,
+    username="Jezza", display_name="Jezza",
+):
+    author = SimpleNamespace(id=42, display_name=display_name, name=username)
     return SimpleNamespace(
         id=123,
         content=content,
@@ -202,6 +205,36 @@ async def test_discord_free_response_in_server_channels(adapter, monkeypatch):
     assert event.text == "hello from channel"
     assert event.source.chat_id == "123"
     assert event.source.chat_type == "group"
+
+
+@pytest.mark.asyncio
+async def test_discord_model_identity_uses_unique_username(adapter, monkeypatch):
+    monkeypatch.setenv("DISCORD_REQUIRE_MENTION", "false")
+    monkeypatch.setenv("DISCORD_AUTO_THREAD", "false")
+    message = make_message(
+        channel=FakeTextChannel(channel_id=123), content="hello",
+        username="unique.account", display_name="Server Owner",
+    )
+
+    await adapter._handle_message(message)
+
+    event = adapter.handle_message.await_args.args[0]
+    assert event.source.user_name == "unique.account"
+
+
+@pytest.mark.asyncio
+async def test_discord_model_identity_falls_back_to_user_id(adapter, monkeypatch):
+    monkeypatch.setenv("DISCORD_REQUIRE_MENTION", "false")
+    monkeypatch.setenv("DISCORD_AUTO_THREAD", "false")
+    message = make_message(
+        channel=FakeTextChannel(channel_id=123), content="hello",
+        username=None, display_name="Server Owner",
+    )
+
+    await adapter._handle_message(message)
+
+    event = adapter.handle_message.await_args.args[0]
+    assert event.source.user_name == "42"
 
 
 @pytest.mark.asyncio
@@ -333,6 +366,24 @@ async def test_fetch_channel_context_stops_at_self_message_and_reverses_to_chron
         "[Gemini [bot]] latest bot note\n"
         "[Alice] latest human note"
     )
+
+
+@pytest.mark.asyncio
+async def test_channel_context_labels_senders_by_unique_username(adapter):
+    adapter.config.extra["history_backfill_limit"] = 10
+    author = SimpleNamespace(
+        id=56, name="unique.account", display_name="Server Owner", bot=False,
+    )
+    channel = FakeHistoryChannel(
+        [make_history_message(author=author, content="prior note", msg_id=4)],
+        channel_id=123,
+    )
+
+    result = await adapter._fetch_channel_context(
+        channel, before=make_message(channel=channel, content="trigger"),
+    )
+
+    assert result == "[Recent channel messages]\n[unique.account] prior note"
 
 
 @pytest.mark.asyncio
@@ -825,5 +876,3 @@ async def test_discord_reply_in_free_channel_triggers_backfill(adapter, monkeypa
     assert event.channel_context == (
         "[Context around the replied-to message]\n[Hermes [bot]] earlier answer"
     )
-
-

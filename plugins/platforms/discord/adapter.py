@@ -490,6 +490,20 @@ def discord_deps_present() -> bool:
     return DISCORD_AVAILABLE
 
 
+def _discord_model_username(user: Any) -> str:
+    """Return a stable sender label for model-facing Discord context.
+
+    Discord display names and guild nicknames are not unique, so another
+    member can copy them.  Account usernames are unique.  Fall back to the
+    immutable user ID when a partial payload does not carry a username; never
+    fall back to the impersonable display name.
+    """
+    username = str(getattr(user, "name", "") or "").strip()
+    if username:
+        return username
+    return str(getattr(user, "id", "") or "unknown").strip() or "unknown"
+
+
 def check_discord_requirements() -> bool:
     """Check if Discord dependencies are available.
 
@@ -6443,7 +6457,7 @@ class DiscordAdapter(BasePlatformAdapter):
             chat_name=chat_name,
             chat_type=chat_type,
             user_id=str(interaction.user.id),
-            user_name=interaction.user.display_name,
+            user_name=_discord_model_username(interaction.user),
             thread_id=thread_id,
             chat_topic=chat_topic,
         )
@@ -6537,7 +6551,7 @@ class DiscordAdapter(BasePlatformAdapter):
             chat_name=chat_name,
             chat_type="thread",
             user_id=str(interaction.user.id),
-            user_name=interaction.user.display_name,
+            user_name=_discord_model_username(interaction.user),
             thread_id=thread_id,
             chat_topic=chat_topic,
         )
@@ -6993,11 +7007,7 @@ class DiscordAdapter(BasePlatformAdapter):
                     content = "(attachment)"
                 if not content:
                     return None
-                name = (
-                    getattr(msg.author, "display_name", None)
-                    or getattr(msg.author, "name", None)
-                    or "unknown"
-                )
+                name = _discord_model_username(msg.author)
                 if is_bot_author:
                     name = f"{name} [bot]"
                 # Mark senders not on the allowlist as [unverified] so the LLM
@@ -8301,7 +8311,7 @@ class DiscordAdapter(BasePlatformAdapter):
             chat_name=chat_name,
             chat_type=chat_type,
             user_id=str(message.author.id),
-            user_name=message.author.display_name,
+            user_name=_discord_model_username(message.author),
             thread_id=thread_id,
             chat_topic=chat_topic,
             is_bot=getattr(message.author, "bot", False),
