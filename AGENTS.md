@@ -4,6 +4,19 @@ Instructions for AI coding assistants and developers working on the hermes-agent
 
 **Never give up on the right solution.**
 
+## Fork task completion requirements
+
+- This checkout is the `Type-Delta/hermes-agent` fork. Keep `origin` pointed
+  at the fork and `upstream` pointed at `NousResearch/hermes-agent`.
+- Document every surviving code divergence in [FORK.md](./FORK.md). Keep its
+  stable IDs, implementation evidence, and recorded validation current; remove
+  an entry when upstream absorbs the behavior.
+- Syncing from `upstream/main` requires explicit user consent. Preserve useful
+  behavior from both sides, prefer upstream when both sides solve the same
+  problem, and ask before choosing between incompatible product behaviors.
+- After an authorized upstream sync is integrated and verified, update
+  `FORK.md`, commit the result, and move the `base` tag to the integrated commit.
+
 ## What Hermes Is
 
 Hermes is a personal AI agent that runs the same agent core across a CLI, a

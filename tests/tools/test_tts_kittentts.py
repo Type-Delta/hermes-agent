@@ -63,11 +63,12 @@ class TestGenerateKittenTts:
     def test_config_passes_voice_speed_cleantext(self, tmp_path, mock_kittentts_module):
         from tools.tts_tool import _generate_kittentts
 
-        fake_model, _ = mock_kittentts_module
+        fake_model, fake_cls = mock_kittentts_module
         config = {
             "kittentts": {
                 "model": "KittenML/kitten-tts-mini-0.8",
                 "voice": "Luna",
+                "backend": "cuda",
                 "speed": 1.25,
                 "clean_text": False,
             }
@@ -78,6 +79,7 @@ class TestGenerateKittenTts:
         assert call_kwargs["voice"] == "Luna"
         assert call_kwargs["speed"] == 1.25
         assert call_kwargs["clean_text"] is False
+        fake_cls.assert_called_once_with("KittenML/kitten-tts-mini-0.8", backend="cuda")
 
 
     def test_missing_kittentts_raises_import_error(self, tmp_path, monkeypatch):
