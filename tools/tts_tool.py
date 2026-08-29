@@ -3099,13 +3099,14 @@ def _generate_kittentts(text: str, output_path: str, tts_config: Dict[str, Any])
     kt_config = tts_config.get("kittentts", {})
     model_name = kt_config.get("model", DEFAULT_KITTENTTS_MODEL)
     voice = kt_config.get("voice", DEFAULT_KITTENTTS_VOICE)
+    backend = kt_config.get("backend", "cpu")
     speed = kt_config.get("speed", 1.0)
     clean_text = kt_config.get("clean_text", True)
 
     # Use cached model instance if available
     def _load_kittentts_model():
         logger.info("[KittenTTS] Loading model: %s", model_name)
-        m = KittenTTS(model_name)
+        m = KittenTTS(model_name, backend=backend)
         logger.info("[KittenTTS] Model loaded successfully")
         return m
 
