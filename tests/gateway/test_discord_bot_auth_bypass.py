@@ -98,6 +98,24 @@ def test_discord_bot_authorized_when_allow_bots_mentions(monkeypatch):
     assert runner._is_user_authorized(source) is True
 
 
+def test_discord_bot_authorized_from_profile_scoped_yaml_extra(monkeypatch):
+    """A multiplexed profile must honor discord.allow_bots without env leakage."""
+    from agent import secret_scope
+
+    runner = _make_bare_runner()
+    runner._authorization_adapter = lambda _platform, profile=None: SimpleNamespace(
+        config=SimpleNamespace(extra={"allow_bots": "mentions"}),
+    )
+    monkeypatch.setattr(secret_scope, "_MULTIPLEX_ACTIVE", True)
+    token = secret_scope.set_secret_scope({})
+    try:
+        assert runner._is_user_authorized(
+            _make_discord_bot_source(bot_id="999888777"),
+        ) is True
+    finally:
+        secret_scope.reset_secret_scope(token)
+
+
 def test_bot_bypass_does_not_leak_to_other_platforms(monkeypatch):
     """The is_bot bypass is Discord-specific — a Telegram bot source with
     is_bot=True must NOT be authorized just because DISCORD_ALLOW_BOTS=all.

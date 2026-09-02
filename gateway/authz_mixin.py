@@ -503,7 +503,22 @@ class GatewayAuthorizationMixin:
         }
         if getattr(source, "is_bot", False):
             allow_bots_var = platform_allow_bots_map.get(source.platform)
-            if allow_bots_var and _platform_gate_env(allow_bots_var, "none").lower().strip() in {"mentions", "all"}:
+            allow_bots_mode = (
+                _platform_gate_env(allow_bots_var, "none").lower().strip()
+                if allow_bots_var
+                else "none"
+            )
+            if allow_bots_mode not in {"mentions", "all"}:
+                try:
+                    adapter = self._authorization_adapter(
+                        source.platform,
+                        profile=adapter_profile,
+                    )
+                    extra = getattr(getattr(adapter, "config", None), "extra", None) or {}
+                    allow_bots_mode = str(extra.get("allow_bots") or "none").lower().strip()
+                except Exception:
+                    pass
+            if allow_bots_mode in {"mentions", "all"}:
                 return True
 
         if not user_id:

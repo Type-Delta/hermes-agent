@@ -1,7 +1,7 @@
 # Type-Delta Hermes Agent Fork
 
-This fork carries the local Discord identity controls and media-development
-support used by the Type-Delta Hermes installation.
+This fork carries the local Discord configuration and identity controls plus
+media-development support used by the Type-Delta Hermes installation.
 
 ## Divergence Log
 
@@ -62,3 +62,22 @@ dependency resolution with lifecycle scripts disabled, and the focused TTS
 test slice.
 
 **Last updated:** 2026-08-29
+
+### HD004 — Discord bot-admission policy in YAML
+
+Operators can set `discord.allow_bots` to `none`, `mentions`, or `all` in
+`config.yaml`, with `DISCORD_ALLOW_BOTS` retaining precedence when both are
+present. The setting is carried in each adapter's profile-scoped configuration
+so multiplexed profiles do not leak bot-admission policy through process-global
+environment state.
+
+**Implementation evidence:** `plugins/platforms/discord/adapter.py`,
+`gateway/authz_mixin.py`, `tests/gateway/test_discord_bot_auth_bypass.py`,
+`tests/plugins/platforms/test_discord_gate_isolation.py`, and
+`website/docs/user-guide/messaging/discord.md`.
+
+**Recorded validation:** focused Discord gate-isolation, bot-authorization,
+bot-filter, and history-backfill tests plus Ruff checks for the affected Python
+files.
+
+**Last updated:** 2026-09-02
