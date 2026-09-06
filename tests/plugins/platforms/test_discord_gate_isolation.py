@@ -351,6 +351,8 @@ class TestYamlBridgeSeeding:
         adapter = _adapter(seeded)
         _snapshot(adapter, {})
         assert adapter._get_allow_bots() == "mentions"
+        _snapshot(adapter, {"DISCORD_ALLOW_BOTS": "none"})
+        assert adapter._get_allow_bots() == "none"
 
     def test_first_writer_env_does_not_mask_second_profile_extras(self, monkeypatch):
         """End-to-end shape of the original repro: profile A bridges env first;

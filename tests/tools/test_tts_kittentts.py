@@ -15,7 +15,7 @@ def clean_env(monkeypatch):
 @pytest.fixture(autouse=True)
 def clear_kittentts_cache():
     """Reset the module-level model cache between tests."""
-    from tools import tts_tool as _tt
+    from tools import tts_tool_local as _tt
     _tt._kittentts_model_cache.clear()
     yield
     _tt._kittentts_model_cache.clear()
@@ -48,6 +48,21 @@ def mock_kittentts_module():
 
 
 class TestGenerateKittenTts:
+    def test_model_cache_reuses_backend_and_isolates_other_backends(self, mock_kittentts_module):
+        from tools.tts_tool_local import _load_kittentts_model_for_config
+
+        _, factory = mock_kittentts_module
+        factory.side_effect = [object(), object()]
+        cpu, _ = _load_kittentts_model_for_config({"kittentts": {"backend": "cpu"}})
+        default, _ = _load_kittentts_model_for_config({})
+        cuda, _ = _load_kittentts_model_for_config({"kittentts": {"backend": "cuda"}})
+        cuda_again, _ = _load_kittentts_model_for_config({"kittentts": {"backend": "cuda"}})
+
+        assert cpu is default
+        assert cuda is cuda_again
+        assert cpu is not cuda
+        assert [call.kwargs["backend"] for call in factory.call_args_list] == ["cpu", "cuda"]
+
     def test_successful_wav_generation(self, tmp_path, mock_kittentts_module):
         from tools.tts_tool import _generate_kittentts
 
