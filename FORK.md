@@ -90,6 +90,19 @@ Real CLI set/get persisted YAML bot policy in a temporary `HERMES_HOME`.
 
 **Last updated:** 2026-09-06
 
+### HD005 — Release-triggered installation checks
+
+The fork removes the twice-daily schedule from the Install & Update E2E
+workflow. Release-tag pushes and manual dispatch still run the existing jobs.
+
+**Implementation evidence:** `.github/workflows/install-e2e.yml`.
+
+**Recorded validation:** YAML parsing and comparison against the previous
+workflow confirm that only the schedule trigger was removed; other triggers
+and all job definitions are unchanged.
+
+**Last updated:** 2026-09-09
+
 ## Repository governance
 
 `AGENTS.md` retains this fork's remote, divergence-log, consent, and completion
