@@ -8,7 +8,7 @@ media-development support used by the Type-Delta Hermes installation.
 This is a current-state record only. Each entry describes a surviving
 difference between `HEAD` and the latest shared base, determined with
 `git merge-base HEAD upstream/main` (currently
-`01ae7a5668ce0fa2efca524a4567cacdd0786c95`). A feature adopted from upstream
+`d76856cc6971b6e0e1903b5369498bcc4bb83a60`). A feature adopted from upstream
 is not a divergence merely because it was involved in a merge.
 
 Keep stable IDs when updating this section. When upstream absorbs a difference,
@@ -93,15 +93,17 @@ Real CLI set/get persisted YAML bot policy in a temporary `HERMES_HOME`.
 ### HD005 — Release-triggered installation checks
 
 The fork removes the twice-daily schedule from the Install & Update E2E
-workflow. Release-tag pushes and manual dispatch still run the existing jobs.
+workflow. Release-tag pushes and manual dispatch still run the existing jobs,
+using upstream's current dispatch inputs (`route`, `tag-count` defaulting to
+`3`, and `install-ref`).
 
 **Implementation evidence:** `.github/workflows/install-e2e.yml`.
 
-**Recorded validation:** YAML parsing and comparison against the previous
-workflow confirm that only the schedule trigger was removed; other triggers
-and all job definitions are unchanged.
+**Recorded validation:** `git diff upstream/main` on the workflow shows only the
+schedule trigger and its two comment lines removed; other triggers, dispatch
+inputs, and all job definitions match upstream.
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-12
 
 ## Repository governance
 
@@ -156,3 +158,44 @@ Python compilation, focused Ruff checks, and the compatibility-pointer scanner
 also passed. Combined distinct targeted coverage is 222 passed and 2 skipped.
 The fork-only diff passes `git diff --check upstream/main`. The complete upstream
 suite, live Discord connection, and real TTS inference were not run.
+
+### 2026-09-12 — Merge upstream/main into main
+
+**Merge commit:** `015e50d944321219cf37a9e8c6b865b9c0ea5c49`.
+**Parents:** `62fbe865543624f7b454a4472a1c6f318ac953fc` (fork) and
+`d76856cc6971b6e0e1903b5369498bcc4bb83a60` (upstream/main).
+
+- Merge upstream directly into `main` (1788 upstream commits, about 2800
+  files) with the owner's explicit consent recorded on 2026-09-12. No rebase.
+- The only textual conflict was the Install & Update E2E workflow: upstream
+  changed the `tag-count` default to `3` and added an `install-ref` input in
+  the same region where HD005 removes the schedule trigger. Take upstream's
+  inputs and keep HD005's schedule removal. This is not an incompatible
+  product choice; both sides survive.
+- Git auto-merged HD001, HD002, and HD004 in the Discord adapter, config
+  defaults, and authorization mixin, and HD003 in the local TTS loader and
+  package files. Upstream has not absorbed any of the five behavior IDs, so
+  all entries remain.
+- Accept upstream additions including the multiplexed gateway migration,
+  shared-listener ingress, cron catch-up after restart gaps, gateway turn-lease
+  and failed-turn fixes, Codex pool inheritance, desktop onboarding, and the
+  version bump to 0.21.2. Live gateway was not restarted; the running process
+  still executes the pre-merge code until its next scheduled restart.
+
+**Validation:** The six fork-specific files (Discord connect, free-response,
+slash-command, bot-auth bypass, gate isolation, KittenTTS) passed with 95 tests
+and no failures via `scripts/run_tests.sh`. Broader subsets under `tests/gateway/`,
+`tests/plugins/`, `tests/tools/`, and `tests/hermes_cli/` ran 28,506 passed, 78
+failed, 291 skipped; `tests/agent/` ran 6,887 passed, 16 failed, 32 skipped.
+Every failing file was rerun against a pristine `upstream/main` worktree with the
+same virtualenv: all but three failed identically there (optional packages such
+as `daytona`, `fal-client`, `modal`, `parallel-web`, `hindsight-client-api`, and
+`anthropic` are not installed, and lazy installs are disabled). The remaining
+three (`test_config_backups.py`, `test_delegate_timeout_cleanup.py`,
+`test_compression_stall_fallback_78981.py`) are timing-dependent in code that is
+byte-identical to upstream; the latter two passed on rerun, and the first is a
+`filecmp` mtime-granularity race reproduced outside pytest. No failure involves a
+fork-touched file. Python compilation of the fork-touched modules, `git diff
+--check upstream/main`, and `npm ci --dry-run --ignore-scripts` passed. The
+complete suite, live Discord connection, real TTS inference, and a gateway
+restart were not run.
