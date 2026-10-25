@@ -1,6 +1,7 @@
 """Tests for the KittenTTS local provider in tools/tts_tool.py."""
 
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,11 +49,14 @@ def mock_kittentts_module():
 
 
 class TestGenerateKittenTts:
-    def test_model_cache_reuses_backend_and_isolates_other_backends(self, mock_kittentts_module):
+    def test_model_cache_reuses_backend_and_isolates_other_backends(self, mock_kittentts_module, monkeypatch):
+        import tools.tts_tool_local as local
         from tools.tts_tool_local import _load_kittentts_model_for_config
 
         _, factory = mock_kittentts_module
         factory.side_effect = [object(), object()]
+        moved = []
+        monkeypatch.setattr(local, "_use_cuda_session", moved.append)
         cpu, _ = _load_kittentts_model_for_config({"kittentts": {"backend": "cpu"}})
         default, _ = _load_kittentts_model_for_config({})
         cuda, _ = _load_kittentts_model_for_config({"kittentts": {"backend": "cuda"}})
@@ -61,7 +65,8 @@ class TestGenerateKittenTts:
         assert cpu is default
         assert cuda is cuda_again
         assert cpu is not cuda
-        assert [call.kwargs["backend"] for call in factory.call_args_list] == ["cpu", "cuda"]
+        assert factory.call_count == 2
+        assert moved == [cuda]
 
     def test_successful_wav_generation(self, tmp_path, mock_kittentts_module):
         from tools.tts_tool import _generate_kittentts
@@ -75,8 +80,12 @@ class TestGenerateKittenTts:
         fake_cls.assert_called_once()
         fake_model.generate.assert_called_once()
 
-    def test_config_passes_voice_speed_cleantext(self, tmp_path, mock_kittentts_module):
+    def test_config_passes_voice_speed_cleantext(self, tmp_path, mock_kittentts_module, monkeypatch):
+        import tools.tts_tool_local as local
         from tools.tts_tool import _generate_kittentts
+
+        moved = []
+        monkeypatch.setattr(local, "_use_cuda_session", moved.append)
 
         fake_model, fake_cls = mock_kittentts_module
         config = {
@@ -94,7 +103,17 @@ class TestGenerateKittenTts:
         assert call_kwargs["voice"] == "Luna"
         assert call_kwargs["speed"] == 1.25
         assert call_kwargs["clean_text"] is False
-        fake_cls.assert_called_once_with("KittenML/kitten-tts-mini-0.8", backend="cuda")
+        fake_cls.assert_called_once_with("KittenML/kitten-tts-mini-0.8")
+        assert moved == [fake_cls.return_value]
+
+    def test_cuda_backend_refuses_cpu_only_onnxruntime(self, monkeypatch):
+        from types import SimpleNamespace
+        from tools.tts_tool_local import _use_cuda_session
+
+        ort = SimpleNamespace(get_available_providers=lambda: ["CPUExecutionProvider"])
+        monkeypatch.setitem(sys.modules, "onnxruntime", ort)
+        with pytest.raises(RuntimeError, match="onnx-cuda"):
+            _use_cuda_session(SimpleNamespace(model=SimpleNamespace(model_path="m.onnx")))
 
 
 

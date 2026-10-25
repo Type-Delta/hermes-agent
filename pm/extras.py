@@ -29,6 +29,7 @@ ANCHORS: dict[str, str | tuple[str, ...]] = {
     "neutts": "neutts",
     "kittentts": ("kittentts", "soundfile"),
     "piper": "piper",
+    "onnx-cuda": "nvidia.cudnn",
     "tts-premium": "elevenlabs",
     "voice": "faster_whisper",
     "stt-whisper": "faster_whisper",

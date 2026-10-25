@@ -168,7 +168,29 @@ def _generate_piper_tts(text: str, output_path: str, tts_config: dict[str, Any])
     return _finalize_wav_output(wav_path, output_path)
 
 
-# --- KittenTTS (local ONNX, 25-80MB models, CPU only) ---
+# --- KittenTTS (local ONNX, 25-80MB models; CPU, or CUDA with the [onnx-cuda] extra) ---
+def _use_cuda_session(model: Any) -> None:
+    """Rebuild a loaded KittenTTS model's ONNX session on the CUDA provider.
+
+    KittenTTS 0.8.1 always builds a default-provider session. The ``[onnx-cuda]``
+    extra ships ``onnxruntime-gpu`` with pip-installed CUDA libraries that
+    ``preload_dlls`` loads. Raises when CUDA cannot be used, rather than silently
+    running on the CPU the backend was chosen to offload.
+    """
+    import onnxruntime as ort
+
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        raise RuntimeError("tts.kittentts.backend is 'cuda' but onnxruntime has no CUDA provider; "
+                           "install the [onnx-cuda] extra")
+    from tools.transcription_local import _preload_pip_cuda_libraries
+
+    _preload_pip_cuda_libraries()
+    onnx = model.model
+    onnx.session = ort.InferenceSession(onnx.model_path, providers=["CUDAExecutionProvider"])
+    if onnx.session.get_providers()[0] != "CUDAExecutionProvider":
+        raise RuntimeError("KittenTTS CUDA session fell back to CPU; check the CUDA/cuDNN libraries")
+
+
 def _load_kittentts_model_for_config(tts_config: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     """Load (or fetch from cache) the KittenTTS model; returns ``(model, kittentts_config)``."""
     KittenTTS = _origin()._import_kittentts()
@@ -177,8 +199,10 @@ def _load_kittentts_model_for_config(tts_config: dict[str, Any]) -> tuple[Any, d
     backend = kt_config.get("backend", "cpu")
 
     def _load_kittentts_model():
-        logger.info("[KittenTTS] Loading model: %s", model_name)
-        m = KittenTTS(model_name, backend=backend)
+        logger.info("[KittenTTS] Loading model: %s (backend=%s)", model_name, backend)
+        m = KittenTTS(model_name)
+        if backend == "cuda":
+            _use_cuda_session(m)
         logger.info("[KittenTTS] Model loaded successfully")
         return m
 

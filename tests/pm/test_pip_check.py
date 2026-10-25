@@ -229,3 +229,15 @@ def test_streamed_check_still_sees_failures_ahead_of_a_long_expected_report(tmp_
                                       env=env, offline=True, explicit=True, output=io.StringIO())
     with pytest.raises(InstallError, match="requires `aa-dep==1.0`, but it's not installed"):
         environment.check(source / "uv.lock")
+
+
+def test_missing_package_is_expected_only_where_the_lock_carries_its_provider(tmp_path):
+    """Fork HD003: onnxruntime-gpu installs `onnxruntime`'s package in its place."""
+    line = "The package `kittentts` requires `onnxruntime`, but it's not installed"
+    with_provider = tmp_path / "gpu.lock"
+    with_provider.write_text(_LOCK + '\n[[package]]\nname = "onnxruntime-gpu"\nversion = "1.25.1"\n'
+                             'source = { registry = "https://pypi.org/simple" }\n', encoding="utf-8")
+    without = tmp_path / "cpu.lock"
+    without.write_text(_LOCK, encoding="utf-8")
+    assert unexpected_incompatibilities(_report(line), with_provider) == []
+    assert unexpected_incompatibilities(_report(line), without) == [line]

@@ -252,23 +252,25 @@ class GatewayVoiceMixin:
 
     @staticmethod
     def _cached_user_display_name(client, user_id: int) -> Optional[str]:
-        """``get_member`` is cache-only; a speaker it misses may still be a cached user, whose display
-        name (global name or username, no server nickname) beats a bare id."""
+        """``get_member`` is cache-only; a speaker it misses may still be a cached user, whose
+        username beats a bare id."""
         get_user = getattr(client, "get_user", None)
-        name = getattr(get_user(int(user_id)) if callable(get_user) else None, "display_name", None)
+        # Fork (HD002): the account username, as typed Discord turns label their sender.
+        name = getattr(get_user(int(user_id)) if callable(get_user) else None, "name", None)
         return name if isinstance(name, str) and name else None
 
     @staticmethod
     def _voice_input_source(adapter, guild_id: int, user_id: int, text_ch_id) -> SessionSource:
         """Bound text channel's own source when available (voice shares the text conversation's
         session), else a synthetic one."""
-        # The speaker's display name, as their typed messages carry it: the pinned session-context
+        # The speaker's name, as their typed messages carry it: the pinned session-context
         # prompt renders it, so a bare id here re-rendered it on every spoken/typed switch.
         client = getattr(adapter, "_client", None)
         guild = client.get_guild(guild_id) if client else None
         member = guild.get_member(int(user_id)) if guild else None
-        display_name = getattr(member, "display_name", None)
-        user_name = display_name if isinstance(display_name, str) and display_name else None
+        # Fork (HD002): typed Discord turns label senders by account username, not display name.
+        username = getattr(member, "name", None)
+        user_name = username if isinstance(username, str) and username else None
         channel = client.get_channel(int(text_ch_id)) if client else None
         if source_data := getattr(adapter, "_voice_sources", {}).get(guild_id):
             source = SessionSource.from_dict(source_data)

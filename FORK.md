@@ -1,6 +1,6 @@
 # Type-Delta Hermes Agent Fork
 
-This fork carries the local Discord configuration and identity controls plus
+This fork carries local Discord intent and identity controls plus
 media-development support used by the Type-Delta Hermes installation.
 
 ## Divergence Log
@@ -8,7 +8,7 @@ media-development support used by the Type-Delta Hermes installation.
 This is a current-state record only. Each entry describes a surviving
 difference between `HEAD` and the latest shared base, determined with
 `git merge-base HEAD upstream/main` (currently
-`d76856cc6971b6e0e1903b5369498bcc4bb83a60`). A feature adopted from upstream
+`4ea8d23cc9f527332ccb1d55359b27741b6ea51b`). A feature adopted from upstream
 is not a divergence merely because it was involved in a merge.
 
 Keep stable IDs when updating this section. When upstream absorbs a difference,
@@ -38,72 +38,62 @@ values, missing values, and invalid values.
 Ordinary Discord messages, slash-command turns, thread starters, and
 channel-history backfill identify human senders to the model by their unique
 account username, with immutable numeric user ID as the fallback. These paths
-do not use display names or guild nicknames for sender identity. Voice
-participant labels and platform lifecycle-hook metadata retain upstream behavior.
+do not use display names or guild nicknames for sender identity. Voice-channel
+turns label the speaker the same way (account username, then the join-time
+name, then the cached user's username), so spoken and typed turns render the
+same pinned session context. Platform lifecycle-hook metadata, including message
+edit/delete events, retains upstream behavior.
 
-**Implementation evidence:** `plugins/platforms/discord/adapter.py` and
-`tests/gateway/test_discord_{free_response,slash_commands}.py`.
+**Implementation evidence:** `plugins/platforms/discord/adapter.py`,
+`gateway/run_voice.py`, and
+`tests/gateway/test_discord_{free_response,slash_commands,turn_prompt_parity}.py`.
 
 **Recorded validation:** Discord free-response, slash-command, and adjacent
 identity/authorization tests via `scripts/run_tests.sh`, including history labels
 and account-name fallback coverage.
 
-**Last updated:** 2026-09-06
+**Last updated:** 2026-10-25
 
-### HD003 — Configurable KittenTTS backend and browser development support
+### HD003 — GPU local voice (KittenTTS and faster-whisper) and browser development support
 
-KittenTTS model construction accepts the configured `tts.kittentts.backend`,
-defaulting to `cpu`, through upstream's local-engine loader used for both speech
-generation and model warm-up. Cache keys include both model and backend, so
-switching backends does not reuse a model loaded for the previous backend.
-The root JavaScript development dependencies also include Playwright so the
-repository can run local browser automation without an ad hoc install.
+`tts.kittentts.backend` selects `cpu` (default) or `cuda`. With `cuda`, the
+loaded KittenTTS model's ONNX session is rebuilt on `CUDAExecutionProvider`,
+and loading fails loudly instead of silently running on CPU. Model-cache keys
+include the backend. Local faster-whisper with a non-CPU device preloads the
+same pip-installed CUDA libraries, so `stt.local.device: cuda` works without
+system CUDA.
+
+Packaging: on Linux x86_64, `onnxruntime-gpu==1.25.1` replaces `onnxruntime`
+in the `kittentts`, `piper`, `voice`, and `stt-whisper` extras, and a `[tool.uv]`
+override drops the CPU wheel there (both install the same `onnxruntime`
+package). PM's `uv pip check` reader accepts the resulting "requires
+`onnxruntime`, but it's not installed" line only when the lock carries
+`onnxruntime-gpu`. The opt-in `onnx-cuda` extra pins CUDA 12.4 / cuDNN 9.1
+libraries, which still run on Pascal GPUs and R550 drivers; newer cuDNN 9.x
+fails at execution there. torch, which misaki[en] imports, comes from the
+PyTorch CPU index on Linux x86_64, because the default wheel installs a CUDA 13
+cuDNN over the same `nvidia/cudnn` directory. Root JavaScript development
+dependencies also include Playwright.
+
+**Sync cost:** `pyproject.toml` and `uv.lock` change on almost every upstream
+sync. Take upstream's versions of both, reapply this entry's pyproject edits,
+and regenerate the lock with `hermes pm lock`.
 
 **Implementation evidence:** `tools/tts_tool_local.py`,
-`tests/tools/test_tts_kittentts.py`, `package.json`, and `package-lock.json`.
+`tools/transcription_local.py`, `pm/pip_check.py`, `pm/extras.py`,
+`pyproject.toml`, `uv.lock`, `tests/tools/test_tts_kittentts.py`,
+`tests/pm/test_pip_check.py`, `package.json`, and `package-lock.json`.
 
-**Recorded validation:** KittenTTS, model-cache LRU, lifecycle lease, streaming,
-and profile-output tests via `scripts/run_tests.sh`. The backend-cache invariant
-checks reuse for the same backend and isolation between CPU and CUDA selections.
-`npm ci --dry-run --ignore-scripts --no-audit --no-fund` resolved the lockfile.
-Model construction is mocked in these tests; live TTS inference was not run.
+**Recorded validation:** KittenTTS, PM pip-check/extras, transcription, and
+project-metadata tests via `scripts/run_tests.sh` (150 passed). Live checks on a
+GTX 1060 (driver 550, CUDA 12.4) went through Hermes's real `text_to_speech_tool`
+and `transcribe_audio`. KittenTTS nano-fp32 ran on `CUDAExecutionProvider` at
+about 0.35 CPU-seconds per warm sentence. faster-whisper medium int8 on CUDA
+transcribed the result correctly. The int8 KittenTTS models (mini, micro) run
+their `ConvInteger` nodes on the CPU under any provider, so only the fp32 model
+offloads.
 
-**Last updated:** 2026-09-06
-
-### HD004 — Discord bot-admission policy in YAML
-
-Operators can set `discord.allow_bots` to `none`, `mentions`, or `all` in
-`config.yaml`, with `DISCORD_ALLOW_BOTS` retaining precedence when both are
-present. The setting is carried in each adapter's profile-scoped configuration
-so multiplexed profiles do not leak bot-admission policy through process-global
-environment state.
-
-**Implementation evidence:** `plugins/platforms/discord/adapter.py`,
-`gateway/authz_mixin.py`, `tests/gateway/test_discord_bot_auth_bypass.py`,
-`tests/plugins/platforms/test_discord_gate_isolation.py`, and
-`website/docs/user-guide/messaging/discord.md`.
-
-**Recorded validation:** Discord bot-authorization, bot-filter, and profile
-gate-isolation tests via `scripts/run_tests.sh`. Checks cover environment `none`
-overriding permissive YAML and reject YAML bot bypass on unsupported platforms.
-Real CLI set/get persisted YAML bot policy in a temporary `HERMES_HOME`.
-
-**Last updated:** 2026-09-06
-
-### HD005 — Release-triggered installation checks
-
-The fork removes the twice-daily schedule from the Install & Update E2E
-workflow. Release-tag pushes and manual dispatch still run the existing jobs,
-using upstream's current dispatch inputs (`route`, `tag-count` defaulting to
-`3`, and `install-ref`).
-
-**Implementation evidence:** `.github/workflows/install-e2e.yml`.
-
-**Recorded validation:** `git diff upstream/main` on the workflow shows only the
-schedule trigger and its two comment lines removed; other triggers, dispatch
-inputs, and all job definitions match upstream.
-
-**Last updated:** 2026-09-12
+**Last updated:** 2026-10-25
 
 ## Repository governance
 
@@ -199,3 +189,45 @@ fork-touched file. Python compilation of the fork-touched modules, `git diff
 --check upstream/main`, and `npm ci --dry-run --ignore-scripts` passed. The
 complete suite, live Discord connection, real TTS inference, and a gateway
 restart were not run.
+
+### 2026-10-25 — Merge upstream/main into main
+
+**Merge commit:** `ea0e444377611ac5f45064de5e6f300ff91b4f6a`, followed by the fork
+fix-up commit that records this entry.
+**Parents:** `3a917107d66913487f0182741e30fa8dbd3cf4ae` (fork) and
+`4ea8d23cc9f527332ccb1d55359b27741b6ea51b` (upstream/main).
+
+- Merge 24,710 upstream commits directly into `main` with the owner's explicit
+  consent. Seven textual conflicts, all in fork-touched files.
+- Upstream absorbed HD004 (YAML `discord.allow_bots` with env precedence,
+  through the generic `extra_or_secret` reader) and HD005 (the install workflow
+  no longer has a schedule), so both entries are removed and upstream's code is
+  taken.
+- Keep HD001's intent reader beside upstream's new `adapter_config_readers`
+  module, and keep HD002's username labels in the reworked thread-starter path.
+  Upstream's new voice-channel speaker labels used display names; they now use
+  account usernames so HD002 covers voice turns too. Message edit/delete events
+  feed lifecycle hooks only and keep upstream behavior.
+- Upstream moved production to a PM-managed Python 3.14 environment. Its
+  KittenTTS 0.8.1 wheel has no `backend` argument, so HD003's constructor change
+  would have crashed TTS. HD003 now rebuilds the ONNX session on CUDA instead,
+  and adds the Linux x86_64 `onnxruntime-gpu` packaging plus faster-whisper CUDA
+  preload described in its entry. With the owner's agreement this accepts a
+  per-sync `uv.lock` regeneration.
+- Accept upstream additions including PM, the gateway-owned session runtime,
+  side questions, and the version bump to 0.22.5.
+
+**Validation:** Broad subsets (`tests/gateway`, `plugins`, `tools`,
+`hermes_cli`, `agent`, `pm`) ran 54,473 passed, 80 failed, 9 errors, 722
+skipped across 5,494 files. Every failing file was rerun on a pristine
+`upstream/main` checkout with the same virtualenv. All fail identically except
+`test_discord_turn_prompt_parity.py`, the HD002 voice gap fixed above, and
+`test_session_mutation_compress_managed.py`, a 300s timeout that passed on rerun.
+The fork-specific and HD003 test files then passed (Discord 178 tests across
+voice/parity files, plus 150 across TTS, PM, transcription and metadata).
+Live: `hermes pm install` built the environment with the discord, kittentts,
+stt-whisper, mcp, and onnx-cuda extras. `hermes-gateway.service` restarted onto
+it under Python 3.14 and connected to Discord as `Aila#9114`. A real
+`hermes chat` turn returned a model reply, generated TTS on
+`CUDAExecutionProvider`, and listed T3 MCP tools. Local STT transcribed that
+audio on CUDA. A Discord-originated message was not sent.

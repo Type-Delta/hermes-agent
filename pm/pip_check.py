@@ -25,6 +25,11 @@ _VERSION_MISMATCH = re.compile(
     r"^The package `[^`]+` requires `([A-Za-z0-9][A-Za-z0-9._-]*)[^`]*`, but `([^`]+)` is installed$"
 )
 _FOUND = re.compile(r"^Found (\d+) incompatibilit(?:y|ies)$", re.MULTILINE)
+_MISSING = re.compile(r"^The package `[^`]+` requires `([A-Za-z0-9][A-Za-z0-9._-]*)[^`]*`, but it's not installed$")
+# Fork (HD003): distributions that install another's importable package. The lock
+# drops `onnxruntime` where `onnxruntime-gpu` provides it, and the dependents'
+# metadata still names `onnxruntime`, so its absence there is expected.
+_PROVIDED_BY = {"onnxruntime": "onnxruntime-gpu"}
 
 
 def _normalize(name: str) -> str:
@@ -89,9 +94,15 @@ def unexpected_incompatibilities(report: str, lock: Path | None) -> list[str] | 
     if lock is None or not lock.is_file():
         return lines
     expected = overridden_versions(lock)
+    _, packages = _parse_lock(lock.read_text(encoding="utf-8"))
+    locked = {_normalize(name) for name, _ in packages}
     unexpected = []
     for line in lines:
         mismatch = _VERSION_MISMATCH.match(line)
-        if not (mismatch and mismatch.group(2) in expected.get(_normalize(mismatch.group(1)), ())):
-            unexpected.append(line)
+        if mismatch and mismatch.group(2) in expected.get(_normalize(mismatch.group(1)), ()):
+            continue
+        missing = _MISSING.match(line)
+        if missing and _PROVIDED_BY.get(_normalize(missing.group(1))) in locked:
+            continue
+        unexpected.append(line)
     return unexpected

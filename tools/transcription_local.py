@@ -170,11 +170,30 @@ def _hub_cache_miss_error() -> type:
     return LocalEntryNotFoundError
 
 
+def _preload_pip_cuda_libraries() -> None:
+    """Fork (HD003): load the ``[onnx-cuda]`` extra's pip CUDA/cuDNN libraries.
+
+    ctranslate2 finds ``libcublas.so.12`` only on the system loader path; once
+    ``onnxruntime.preload_dlls`` has loaded the pip-installed copies, its CUDA
+    device works. Without onnxruntime-gpu this is a no-op and the existing CPU
+    fallback applies.
+    """
+    try:
+        import onnxruntime
+    except ImportError:
+        return
+    preload = getattr(onnxruntime, "preload_dlls", None)
+    if preload is not None and "CUDAExecutionProvider" in onnxruntime.get_available_providers():
+        preload()
+
+
 def _create_whisper_model(model_name: str, *, device: str, compute_type: str):
     """Use a cached model without contacting the Hub, downloading only on a cache miss."""
     from faster_whisper import WhisperModel
 
     kwargs = {"device": device, "compute_type": compute_type}
+    if device != "cpu":
+        _preload_pip_cuda_libraries()
     try:
         return WhisperModel(model_name, local_files_only=True, **kwargs)
     except (_hub_cache_miss_error(), RuntimeError) as exc:
