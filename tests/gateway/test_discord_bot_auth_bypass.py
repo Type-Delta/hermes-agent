@@ -98,26 +98,6 @@ def test_discord_bot_authorized_when_allow_bots_mentions(monkeypatch):
     assert runner._is_user_authorized(source) is True
 
 
-@pytest.mark.parametrize(("env_mode", "authorized"), [(None, True), ("none", False), ("all", True)])
-def test_discord_bot_authorized_from_profile_scoped_yaml_extra(monkeypatch, env_mode, authorized):
-    """A multiplexed profile must honor discord.allow_bots without env leakage."""
-    from agent import secret_scope
-
-    runner = _make_bare_runner()
-    runner._authorization_adapter = lambda _platform, profile=None: SimpleNamespace(
-        config=SimpleNamespace(extra={"allow_bots": "mentions"}),
-    )
-    monkeypatch.setattr(secret_scope, "_MULTIPLEX_ACTIVE", True)
-    scope = {} if env_mode is None else {"DISCORD_ALLOW_BOTS": env_mode}
-    token = secret_scope.set_secret_scope(scope)
-    try:
-        assert runner._is_user_authorized(
-            _make_discord_bot_source(bot_id="999888777"),
-        ) is authorized
-    finally:
-        secret_scope.reset_secret_scope(token)
-
-
 def test_bot_bypass_does_not_leak_to_other_platforms(monkeypatch):
     """The is_bot bypass is Discord-specific — a Telegram bot source with
     is_bot=True must NOT be authorized just because DISCORD_ALLOW_BOTS=all.
@@ -135,18 +115,6 @@ def test_bot_bypass_does_not_leak_to_other_platforms(monkeypatch):
         is_bot=True,
     )
     assert runner._is_user_authorized(telegram_bot) is False
-
-
-def test_yaml_bot_bypass_requires_a_supported_platform():
-    runner = _make_bare_runner()
-    runner._authorization_adapter = lambda _platform, profile=None: SimpleNamespace(
-        config=SimpleNamespace(extra={"allow_bots": "all"}),
-    )
-    source = SessionSource(
-        platform=Platform.WHATSAPP, chat_id="123", chat_type="channel",
-        user_id="999888777", is_bot=True,
-    )
-    assert runner._is_user_authorized(source) is False
 
 
 # -----------------------------------------------------------------------------

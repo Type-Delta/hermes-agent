@@ -1,20 +1,24 @@
 # Type-Delta Hermes Agent Fork
 
-This fork carries local Discord intent and identity controls plus
-media-development support used by the Type-Delta Hermes installation.
+<!-- In-synced fork: maintained with the `syncfork` skill. -->
+
+This fork carries explicit Discord gateway intents, username-based Discord
+sender identity, and GPU-backed local voice (KittenTTS and faster-whisper) for
+the Type-Delta Hermes installation.
 
 ## Divergence Log
 
-This is a current-state record only. Each entry describes a surviving
-difference between `HEAD` and the latest shared base, determined with
-`git merge-base HEAD upstream/main` (currently
-`4ea8d23cc9f527332ccb1d55359b27741b6ea51b`). A feature adopted from upstream
-is not a divergence merely because it was involved in a merge.
+Each behavior where this fork differs from upstream has one entry here. If you change code in this repository, check if this log needs an update.
 
-Keep stable IDs when updating this section. When upstream absorbs a difference,
-remove or rewrite the entry rather than preserving chronology here. Update its
-behavior, implementation evidence, and validation when the surviving difference
-changes.
+The rules:
+
+- Update the entry that owns the behavior you changed, or add an entry with the next unused ID. One entry covers one behavior, not one commit.
+- Describe the current behavior, why the fork needs it, and how it composes with upstream's related behavior. When the behavior changes, rewrite the entry. Do not append a changelog; git and the Merge History hold history.
+- Under **Implementation evidence**, list the key source files and tests. Under **Recorded validation**, list the checks that proved the current behavior.
+- Set **Last updated** to today's date on every entry you touch.
+- Never reuse an ID. Retire an entry only with the user's explicit approval: delete it and name the retired ID in the next Merge History entry.
+- When an ID conflicts from merges, renumber the IDs as needed.
+- A change that does not alter how the fork differs from upstream (formatting, or an edit to this file) needs no entry.
 
 ### HD001 — Explicit Discord gateway intents
 
@@ -75,10 +79,6 @@ PyTorch CPU index on Linux x86_64, because the default wheel installs a CUDA 13
 cuDNN over the same `nvidia/cudnn` directory. Root JavaScript development
 dependencies also include Playwright.
 
-**Sync cost:** `pyproject.toml` and `uv.lock` change on almost every upstream
-sync. Take upstream's versions of both, reapply this entry's pyproject edits,
-and regenerate the lock with `hermes pm lock`.
-
 **Implementation evidence:** `tools/tts_tool_local.py`,
 `tools/transcription_local.py`, `pm/pip_check.py`, `pm/extras.py`,
 `pyproject.toml`, `uv.lock`, `tests/tools/test_tts_kittentts.py`,
@@ -93,102 +93,29 @@ transcribed the result correctly. The int8 KittenTTS models (mini, micro) run
 their `ConvInteger` nodes on the CPU under any provider, so only the fp32 model
 offloads.
 
-**Last updated:** 2026-10-25
+**Last updated:** 2026-10-30
 
-## Repository governance
+## Sync Checklist
 
-`AGENTS.md` retains this fork's remote, divergence-log, consent, and completion
-requirements. This document records the code differences above and the history
-below. These repository instructions and records do not add runtime behavior.
+Project-specific checks every upstream sync runs, in addition to the full test suite, lint, typecheck, builds, and a smoke test of upstream and fork features.
+
+- Take upstream's `pyproject.toml` and `uv.lock`, reapply HD003's
+  `pyproject.toml` edits, and regenerate the lock with `hermes pm lock`.
+  Confirm the lock carries `onnxruntime-gpu` and the PyTorch CPU index for
+  torch on Linux x86_64.
+- Run `python scripts/ci/check_agents_md_size.py`. Upstream leaves little
+  headroom under the root and chain caps, so fork lines in `AGENTS.md` must fit
+  what remains.
+- On a host with an NVIDIA GPU, run `hermes pm install` with the `discord`,
+  `kittentts`, `stt-whisper`, and `onnx-cuda` extras. Generate speech through
+  `text_to_speech_tool` with `tts.kittentts.backend: cuda` and confirm it runs
+  on `CUDAExecutionProvider`, then transcribe it with `stt.local.device: cuda`.
+- Restart the gateway on the merged code, confirm it connects to Discord, and
+  run a real chat turn.
 
 ## Merge History
 
-This is an append-only historical decision record. It provides context for
-integrations but never, by itself, establishes an ongoing fork divergence; use
-the current Divergence Log for that determination.
-
-Update the `base` tag after each verified merge to the integrated commit. That
-tag records the fork's completed integration; `git merge-base HEAD upstream/main`
-identifies the shared upstream ancestor.
-
-### 2026-09-06 — Merge upstream/main into main
-
-**Merge commit:** the upstream integration commit containing this entry,
-identified by the parents below.
-**Parents:** `0be052de361cb2f688ed4f81dcd452c22cde2204` (fork) and
-`01ae7a5668ce0fa2efca524a4567cacdd0786c95` (upstream/main).
-
-- Integrate upstream into the existing `sync-upstream` worktree branch first,
-  then merge that branch back to `main`, as requested by the user.
-- Adopt upstream's module decomposition and current implementation structure.
-  Keep all four fork behavior IDs because the target has not absorbed them.
-- Retain HD001's exact Discord intent override alongside upstream's automatic
-  intent defaults, and HD002's account-based identity on messages, commands,
-  thread starters, and history backfill.
-- Retain HD004's profile-scoped YAML bot-admission behavior within upstream's
-  authorization structure. An explicit environment value of `none` also wins
-  over permissive YAML, matching the documented environment override contract.
-  Review caught and fixed an initial merge regression that allowed the YAML
-  fallback on unsupported platforms; the upstream platform boundary is retained.
-- Move HD003's KittenTTS backend argument to the local-engine loader so upstream's
-  model warm-up and generation paths share the same selection. Key the model
-  cache by backend as well as model name to keep backend switches effective.
-  Retain Playwright as a development dependency.
-- Accept upstream additions including built-in `/plan`, contextual `/btw`, `/bg`,
-  default tool deferral, local models, provider and browser expansion, Group Chat
-  recovery, remote sandbox media delivery, and security fixes.
-- Preserve the requested append-only Merge History format and replace the user's
-  example entry with this integration record.
-
-**Validation:** 220 tests passed across 17 focused/adjacent files, with 2 skips
-and no failures or flaky retries. After adding explicit environment-precedence
-coverage, the two affected files passed again with 29 tests. Real isolated
-CLI/config and adapter YAML parsing checks passed; npm dependency dry-run passed.
-Python compilation, focused Ruff checks, and the compatibility-pointer scanner
-also passed. Combined distinct targeted coverage is 222 passed and 2 skipped.
-The fork-only diff passes `git diff --check upstream/main`. The complete upstream
-suite, live Discord connection, and real TTS inference were not run.
-
-### 2026-09-12 — Merge upstream/main into main
-
-**Merge commit:** `015e50d944321219cf37a9e8c6b865b9c0ea5c49`.
-**Parents:** `62fbe865543624f7b454a4472a1c6f318ac953fc` (fork) and
-`d76856cc6971b6e0e1903b5369498bcc4bb83a60` (upstream/main).
-
-- Merge upstream directly into `main` (1788 upstream commits, about 2800
-  files) with the owner's explicit consent recorded on 2026-09-12. No rebase.
-- The only textual conflict was the Install & Update E2E workflow: upstream
-  changed the `tag-count` default to `3` and added an `install-ref` input in
-  the same region where HD005 removes the schedule trigger. Take upstream's
-  inputs and keep HD005's schedule removal. This is not an incompatible
-  product choice; both sides survive.
-- Git auto-merged HD001, HD002, and HD004 in the Discord adapter, config
-  defaults, and authorization mixin, and HD003 in the local TTS loader and
-  package files. Upstream has not absorbed any of the five behavior IDs, so
-  all entries remain.
-- Accept upstream additions including the multiplexed gateway migration,
-  shared-listener ingress, cron catch-up after restart gaps, gateway turn-lease
-  and failed-turn fixes, Codex pool inheritance, desktop onboarding, and the
-  version bump to 0.21.2. Live gateway was not restarted; the running process
-  still executes the pre-merge code until its next scheduled restart.
-
-**Validation:** The six fork-specific files (Discord connect, free-response,
-slash-command, bot-auth bypass, gate isolation, KittenTTS) passed with 95 tests
-and no failures via `scripts/run_tests.sh`. Broader subsets under `tests/gateway/`,
-`tests/plugins/`, `tests/tools/`, and `tests/hermes_cli/` ran 28,506 passed, 78
-failed, 291 skipped; `tests/agent/` ran 6,887 passed, 16 failed, 32 skipped.
-Every failing file was rerun against a pristine `upstream/main` worktree with the
-same virtualenv: all but three failed identically there (optional packages such
-as `daytona`, `fal-client`, `modal`, `parallel-web`, `hindsight-client-api`, and
-`anthropic` are not installed, and lazy installs are disabled). The remaining
-three (`test_config_backups.py`, `test_delegate_timeout_cleanup.py`,
-`test_compression_stall_fallback_78981.py`) are timing-dependent in code that is
-byte-identical to upstream; the latter two passed on rerun, and the first is a
-`filecmp` mtime-granularity race reproduced outside pytest. No failure involves a
-fork-touched file. Python compilation of the fork-touched modules, `git diff
---check upstream/main`, and `npm ci --dry-run --ignore-scripts` passed. The
-complete suite, live Discord connection, real TTS inference, and a gateway
-restart were not run.
+This is an append-only decision record, newest first, with one entry per upstream sync. It explains past integrations but does not by itself establish a current divergence; use the Divergence Log for that. Sync with upstream only when the user explicitly asks. Do not edit past entries.
 
 ### 2026-10-25 — Merge upstream/main into main
 
@@ -231,3 +158,82 @@ it under Python 3.14 and connected to Discord as `Aila#9114`. A real
 `hermes chat` turn returned a model reply, generated TTS on
 `CUDAExecutionProvider`, and listed T3 MCP tools. Local STT transcribed that
 audio on CUDA. A Discord-originated message was not sent.
+
+### 2026-09-12 — Merge upstream/main into main
+
+**Merge commit:** `015e50d944321219cf37a9e8c6b865b9c0ea5c49`.
+**Parents:** `62fbe865543624f7b454a4472a1c6f318ac953fc` (fork) and
+`d76856cc6971b6e0e1903b5369498bcc4bb83a60` (upstream/main).
+
+- Merge upstream directly into `main` (1788 upstream commits, about 2800
+  files) with the owner's explicit consent recorded on 2026-09-12. No rebase.
+- The only textual conflict was the Install & Update E2E workflow: upstream
+  changed the `tag-count` default to `3` and added an `install-ref` input in
+  the same region where HD005 removes the schedule trigger. Take upstream's
+  inputs and keep HD005's schedule removal. This is not an incompatible
+  product choice; both sides survive.
+- Git auto-merged HD001, HD002, and HD004 in the Discord adapter, config
+  defaults, and authorization mixin, and HD003 in the local TTS loader and
+  package files. Upstream has not absorbed any of the five behavior IDs, so
+  all entries remain.
+- Accept upstream additions including the multiplexed gateway migration,
+  shared-listener ingress, cron catch-up after restart gaps, gateway turn-lease
+  and failed-turn fixes, Codex pool inheritance, desktop onboarding, and the
+  version bump to 0.21.2. Live gateway was not restarted; the running process
+  still executes the pre-merge code until its next scheduled restart.
+
+**Validation:** The six fork-specific files (Discord connect, free-response,
+slash-command, bot-auth bypass, gate isolation, KittenTTS) passed with 95 tests
+and no failures via `scripts/run_tests.sh`. Broader subsets under `tests/gateway/`,
+`tests/plugins/`, `tests/tools/`, and `tests/hermes_cli/` ran 28,506 passed, 78
+failed, 291 skipped; `tests/agent/` ran 6,887 passed, 16 failed, 32 skipped.
+Every failing file was rerun against a pristine `upstream/main` worktree with the
+same virtualenv: all but three failed identically there (optional packages such
+as `daytona`, `fal-client`, `modal`, `parallel-web`, `hindsight-client-api`, and
+`anthropic` are not installed, and lazy installs are disabled). The remaining
+three (`test_config_backups.py`, `test_delegate_timeout_cleanup.py`,
+`test_compression_stall_fallback_78981.py`) are timing-dependent in code that is
+byte-identical to upstream; the latter two passed on rerun, and the first is a
+`filecmp` mtime-granularity race reproduced outside pytest. No failure involves a
+fork-touched file. Python compilation of the fork-touched modules, `git diff
+--check upstream/main`, and `npm ci --dry-run --ignore-scripts` passed. The
+complete suite, live Discord connection, real TTS inference, and a gateway
+restart were not run.
+
+### 2026-09-06 — Merge upstream/main into main
+
+**Merge commit:** the upstream integration commit containing this entry,
+identified by the parents below.
+**Parents:** `0be052de361cb2f688ed4f81dcd452c22cde2204` (fork) and
+`01ae7a5668ce0fa2efca524a4567cacdd0786c95` (upstream/main).
+
+- Integrate upstream into the existing `sync-upstream` worktree branch first,
+  then merge that branch back to `main`, as requested by the user.
+- Adopt upstream's module decomposition and current implementation structure.
+  Keep all four fork behavior IDs because the target has not absorbed them.
+- Retain HD001's exact Discord intent override alongside upstream's automatic
+  intent defaults, and HD002's account-based identity on messages, commands,
+  thread starters, and history backfill.
+- Retain HD004's profile-scoped YAML bot-admission behavior within upstream's
+  authorization structure. An explicit environment value of `none` also wins
+  over permissive YAML, matching the documented environment override contract.
+  Review caught and fixed an initial merge regression that allowed the YAML
+  fallback on unsupported platforms; the upstream platform boundary is retained.
+- Move HD003's KittenTTS backend argument to the local-engine loader so upstream's
+  model warm-up and generation paths share the same selection. Key the model
+  cache by backend as well as model name to keep backend switches effective.
+  Retain Playwright as a development dependency.
+- Accept upstream additions including built-in `/plan`, contextual `/btw`, `/bg`,
+  default tool deferral, local models, provider and browser expansion, Group Chat
+  recovery, remote sandbox media delivery, and security fixes.
+- Preserve the requested append-only Merge History format and replace the user's
+  example entry with this integration record.
+
+**Validation:** 220 tests passed across 17 focused/adjacent files, with 2 skips
+and no failures or flaky retries. After adding explicit environment-precedence
+coverage, the two affected files passed again with 29 tests. Real isolated
+CLI/config and adapter YAML parsing checks passed; npm dependency dry-run passed.
+Python compilation, focused Ruff checks, and the compatibility-pointer scanner
+also passed. Combined distinct targeted coverage is 222 passed and 2 skipped.
+The fork-only diff passes `git diff --check upstream/main`. The complete upstream
+suite, live Discord connection, and real TTS inference were not run.
